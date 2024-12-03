@@ -113,7 +113,3 @@ token_manager = TokenManager(
     client_id=client_id,
     client_secret=client_secret
 )
-
-# Get the current access token (it will refresh automatically if expired)
-access_token = token_manager._get_access_token()
-print(f"Access token: {access_token}")
