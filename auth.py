@@ -69,7 +69,7 @@ class TokenManager:
 
         return now_utc >= expires_at
 
-    def _get_access_token(self):
+    def get_access_token(self):
         """Get the current access token, refreshing it if necessary."""
         access_token, access_token_expires_at, refresh_token = self._get_tokens_from_db()
 
@@ -104,7 +104,6 @@ class TokenManager:
         # Store the new access token and refresh token
         self._store_tokens_in_db(access_token, access_token_expires_at, refresh_token)
 
-        print("Access token refreshed successfully!")
 
 # Usage example:
 # Initialize with your credentials and tokens
