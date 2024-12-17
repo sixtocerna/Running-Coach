@@ -1,5 +1,9 @@
 from datetime import datetime
 from pydantic import BaseModel, field_validator
+import requests
+from io import BytesIO
+import fitparse
+from utils import speed_to_pace
 
 
 class WorkoutData(BaseModel):
@@ -46,6 +50,57 @@ class WorkoutData(BaseModel):
                 value_with_hour_shift = value.replace("Z", "+00:00")
                 return datetime.fromisoformat(value_with_hour_shift)
             return datetime.fromisoformat(value)
+        
+    @property
+    def _fit_file_url(self) -> str:
+        return self.workout_summary['file']['url']
+    
+    @property
+    def laps(self) -> list[dict]:
+
+        response = requests.get(self._fit_file_url)
+
+        response.raise_for_status()
+
+        fitfile = fitparse.FitFile(BytesIO(response.content))
+
+        output = []
+
+        relevant_fields = {
+            'avg_speed':'Average speed', 
+            'total_distance':'Total distance', 
+            'total_elapsed_time':'Total elapsed time',
+            'total_descent':'Total descent', 
+            'total_ascent':'Total ascent', 
+            'avg_grade':'Average grade'
+        }
+
+        for lap in fitfile.get_messages('lap'):
+            
+            lap_data = {}
+
+            for field_key, field_name in relevant_fields.items():
+
+                if field_key == 'avg_speed':
+                    value = lap.get_value(field_key)
+                    lap_data[field_name] = speed_to_pace(value)
+                    
+                elif field_key == 'total_elapsed_time':
+                    value = lap.get_value(field_key)
+                    minutes = int(value//60) # Convert from secs to min and secs
+                    secs = int(value % 60)
+                    lap_data[field_name] =  f'{minutes}:{secs}min'
+                else:
+                    value = str(lap.get(field_key))
+                    lap_data[field_name] =  value.replace(']','').replace('[', '')
+
+            output.append(lap_data)
+
+        return output
+
+
+
+
 
 class WorkoutEndpointResponseJSONModel(BaseModel):
     workouts : list[WorkoutData]

@@ -34,7 +34,14 @@ def setup_logger(log_file: str, level=logging.INFO):
 
     return logger
 
+def speed_to_pace(speed_mps):
+    
+    pace_minutes = 16.666666667 / speed_mps
 
+    minutes = int(pace_minutes)
+    seconds = int((pace_minutes - minutes) * 60)
+
+    return f"{minutes}:{seconds:02d}min/km"
 
 
 

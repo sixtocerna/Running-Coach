@@ -1,8 +1,13 @@
 import json
 from typing import Tuple
-from datetime import datetime
+from datetime import datetime, UTC
 from pydantic import BaseModel, Field
+from connections import DatabaseAPI
+from utils import setup_logger, speed_to_pace
+from models import WorkoutData
 
+
+logger = setup_logger('api_logs.log')
 
 
 class Time(BaseModel):
@@ -79,3 +84,58 @@ def read_plan_stucture(filename:str) -> dict:
         data = json.loads(data)
 
     return data
+
+def generate_workouts_report(workout_id:int) -> str:
+
+    db = DatabaseAPI('db.sqlite3', logger=logger)
+
+    db.get_recent_workouts_data()
+
+def generate_indiviual_workout_report(workout_data:WorkoutData, feedback_data:dict,detailed:bool=False, add_days_since:bool=False) -> str:
+
+    msg = feedback_data.get('feedback')
+    rpe = feedback_data.get('rpe')
+
+    if add_days_since:
+        today = datetime.now(UTC).date()
+        days_since_workout = (today - workout_data.starts.date()).days
+        output = f'It has been {days_since_workout} days since this workout. '
+    else:
+        output=''
+
+    if detailed:
+        # Called request and process the file
+        laps = workout_data.laps
+        output = '\n'
+
+        for num, lap in enumerate(laps):
+            lap_as_str = f'Lap #{num+1}'.center(30, '-') +'\n ' + '\n '.join([f'- {name} : {value}' for name,value in lap.items()])
+            output+=lap_as_str + '\n'
+
+        if msg:
+            output+=f'\nHere is the feedback given "{msg}". '
+        if rpe:
+            output+=f'The RPE was {rpe}/10.'
+
+        return output
+
+    else:
+        # Just get the info from workout data
+        summary = workout_data.workout_summary
+        avg_speed = float(summary["speed_avg"]) # in min/km
+        pace = speed_to_pace(avg_speed)
+        output += f'The run consisted of {float(summary['distance_accum'])/1000:0.02f}km in {workout_data.minutes}min (average pace of {pace}). '
+        if msg:
+            output+=f'Here is the feedback given "{msg}". '
+        if rpe:
+            output+=f'The RPE was {rpe}/10.'
+
+        return output
+    
+db = DatabaseAPI('db.sqlite3', logger=logger)
+most_recent_workout = db.get_recent_workouts_data(1)[0]
+id_ = most_recent_workout.id
+
+feedback = db.get_feedback_from_workouts([id_])[0]
+
+print(generate_indiviual_workout_report(most_recent_workout, feedback_data=feedback, detailed=True, add_days_since=True))

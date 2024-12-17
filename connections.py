@@ -220,7 +220,7 @@ class DatabaseAPI:
         )
         )
         
-    def recent_workouts_data(self, num:int=5) -> list[WorkoutData]:
+    def get_recent_workouts_data(self, num:int=5) -> list[WorkoutData]:
 
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
