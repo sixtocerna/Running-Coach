@@ -252,14 +252,51 @@ class DatabaseAPI:
 
         return workouts
 
+    def add_feedback_most_recent_workout(self, rpe:int, msg:str):
 
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+
+        query = "SELECT id FROM workouts WHERE starts = (SELECT MAX(starts) FROM workouts)"
+        response = cursor.execute(query)
+        most_recent_workout_id = response.fetchone()[0]
+
+        self._add_feedback(most_recent_workout_id, rpe, msg)
+
+        conn.commit()
+        conn.close()  
+    
+    def _add_feedback(self, workout_id:int, rpe:int, msg:str):
+
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+
+        insert_query = "INSERT INTO feedback (workout_id, rpe, feedback) VALUES (?, ?, ?)"
+
+        cursor.execute(insert_query, (workout_id, rpe, msg))
+
+        conn.commit()
+        conn.close()
+
+        self.logger.info(f'Added feedback to workout {workout_id}')
         
-    def add_feedback(self, msg:str, rpe:int, workout_id:int):
-        ...
 
-    def get_feedback_from_workouts(self, workouts_id)->dict[int, dict]:
-        # Return {workout_id -> {rpe, msg}}
-        ...
+    def get_feedback_from_workouts(self, workouts_id:list[int])->list[dict[int, dict]]:
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+
+        placeholders = ', '.join('?' for _ in workouts_id)
+    
+        query = f'SELECT workout_id, rpe, feedback FROM feedback WHERE workout_id IN ({placeholders})'
+        query_results = cursor.execute(query, tuple(workouts_id))
+        
+        found = [{'workout_id':r[0], 'rpe':r[1], 'feedback':r[2]} for r in query_results]
+        ids_with_feedback = [r['workout_id'] for r in found]
+        not_found = [{'workout_id':id_, 'rpe':None, 'feedback':None} for id_ in workouts_id if id_ not in ids_with_feedback]
+
+        conn.close()
+
+        return found + not_found
 
     def add_plan(self, plan_data):
         ...
