@@ -1,62 +1,13 @@
 import requests
 from auth import token_manager
-from datetime import datetime, UTC
-from pydantic import BaseModel, field_validator
+from datetime import datetime, UTC, timedelta
+from models import WorkoutData, WorkoutEndpointResponseJSONModel
+import sqlite3
+import json
+import logging
+from utils import setup_logger
 
-class WorkoutData(BaseModel):
-
-    id:int
-    starts:datetime
-    minutes:int
-    name:str
-    plan_id:int|None
-    route_id:int|None
-    workout_token:str
-    workout_type_id:int
-    day_code:int|None
-    workout_summary:dict|None
-    created_at:str
-    updated_at:str
-
-    @field_validator('starts', mode='before')
-    @classmethod
-    def parse_and_convert_to_UTC(cls, value):
-
-        if isinstance(value, str):
-
-            return datetime.strptime(value, '%Y-%m-%dT%H:%M:%S.000Z').astimezone(UTC)
-
-
-class WorkoutEndpointResponseJSONModel(BaseModel):
-    workouts : list[WorkoutData]
-    total : int
-    page : int
-    per_page: int
-    order : str
-    sort : str
-
-    # Assert that the API still returns workouts in the expected order
-
-    @field_validator('order')
-    @classmethod
-    def order_is_descending(cls, value):
-        if value == 'descending':
-            return value
-        
-    @field_validator('sort')
-    @classmethod
-    def ordered_by_start(cls, value):
-        if value == 'starts':
-            return value
-
-    @property 
-    def lastest_starts_date_in_page(self):
-
-        print(self.workouts[-1].starts, self.workouts)
-
-        return self.workouts[-1].starts
-    
-
+logger = setup_logger('api_logs.log')
 
 class WahooAPI:
 
@@ -84,8 +35,8 @@ class WahooAPI:
         return WorkoutEndpointResponseJSONModel(**response.json())
     
 
-    def read_workouts(self, before:datetime|None=None, per_page:int=50) -> list[WorkoutData]:
-        # Before date is in UTC
+    def read_workouts(self, after:datetime|None=None, per_page:int=50) -> list[WorkoutData]:
+        # After date is in UTC. After is strict
 
         first_page = self._get_workouts_page(1, per_page=per_page)
 
@@ -93,11 +44,11 @@ class WahooAPI:
 
         total = first_page.total
 
-        if before:
-            # Get only workouts before the specified date
+        if after:
+            # Get only workouts after the specified date
 
-            # Prevent error of comparing naive tz (from before) with UTC time (from API)
-            assert before.timetz().tzinfo == UTC, 'Before must be a datetime with UTC'
+            # Prevent error of comparing naive tz (from after) with UTC time (from API)
+            assert after.timetz().tzinfo == UTC, 'Before must be a datetime with UTC'
 
             last_date_in_response = first_page.lastest_starts_date_in_page
 
@@ -105,9 +56,9 @@ class WahooAPI:
 
             # Only go to next page if there are more workouts that could be in the next page
             # that means there are still unseen workouts in later pages that could have
-            # a date before the selected date
-            
-            while last_date_in_response <= before and len(output)<total:
+            # a date bafter the selected date
+
+            while last_date_in_response >= after and len(output)<total:
                 
                 next_page = self._get_workouts_page(next_page_num, per_page=per_page)
 
@@ -115,7 +66,7 @@ class WahooAPI:
 
                 output.extend(next_page.workouts)
 
-            return [w for w in output if w.starts<=before]
+            return [w for w in output if w.starts>after]
 
         else:
 
@@ -143,5 +94,143 @@ class WahooAPI:
     def delete_plan(self):
         ...
 
+class DatabaseAPI:
+
+    def __init__(self, db_file:str, logger:logging.Logger):
+        self.db_file = db_file
+        self.logger = logger
+
+    def _create_workouts_table(self, cursor:sqlite3.Cursor):
+
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS workouts (
+            id INT NOT NULL PRIMARY KEY,
+            starts DATETIME NOT NULL,
+            minutes INT NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            plan_id INT NULL,
+            route_id INT NULL,
+            workout_token VARCHAR(255) NOT NULL,
+            workout_type_id INT NOT NULL,
+            day_code INT NULL,
+            workout_summary JSON NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        );
+        ''')
+
+    def _create_feedback_table(self, cursor:sqlite3.Cursor):
+
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workout_id INT NOT NULL,
+            rpe INT NOT NULL,
+            feedback TEXT,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (workout_id) REFERENCES workouts(id) ON DELETE CASCADE
+        );
+        ''')
+
+
+    def _create_plan_table(self, cursor:sqlite3.Cursor):
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workout_id INT NOT NULL,
+            content JSON NOT NULL,
+            FOREIGN KEY (workout_id) REFERENCES workouts(id) ON DELETE CASCADE
+        );
+        ''')
+
+    def _create_all_tables(self):
+
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+
+        self._create_workouts_table(cursor)
+        self._create_feedback_table(cursor)
+        self._create_plan_table(cursor)
+
+        conn.commit()
+        conn.close()
+
+    def update_workouts_table(self):
+
+        # Get most recent workout date
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+
+        query = "SELECT MAX(starts) FROM workouts"
+        response = cursor.execute(query)
+        most_recent_workout_date = response.fetchone()[0]
+
+        wahoo = WahooAPI()
+
+        # If the table was empty get all workouts
+        if most_recent_workout_date is None:
+            workouts_to_upload_locally = wahoo.read_workouts()
+        # If there was at least one workout
+        else:
+            # Add one minute to not bring the most recent from the API
+            # and prevent a unique ID error on the database
+
+            most_recent_workout_date = datetime.fromisoformat(most_recent_workout_date)
+
+            workouts_to_upload_locally = wahoo.read_workouts(after=most_recent_workout_date)
+        
+        # Add them to the database
+
+        self.logger.info(f'Uploading {len(workouts_to_upload_locally)} workouts to database : after {most_recent_workout_date}')
+
+        for workout in workouts_to_upload_locally:
+            try: 
+                self.upload_workout(workout, cursor)
+            except sqlite3.Error as e:
+                self.logger.error(f'Failed to upload workout with id {workout.id} : {e}')
+            else:
+                self.logger.info(f'Succesfully uploaded workout')
+
+        conn.commit()
+        conn.close()
+
+
+    def upload_workout(self, workout:WorkoutData, cursor:sqlite3.Cursor):
+        
+        insert_query = """
+        INSERT INTO workouts (
+            id, starts, minutes, name, plan_id, route_id, workout_token,
+            workout_type_id, day_code, workout_summary, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+
+        cursor.execute(insert_query, (
+            workout.id,
+                workout.starts.strftime('%Y-%m-%dT%H:%M:%S.000+00:00'),  # Convert datetime to ISO 8601 string
+                workout.minutes,
+                workout.name,
+                workout.plan_id,
+                workout.route_id,
+                workout.workout_token,
+                workout.workout_type_id,
+                workout.day_code,
+                json.dumps(workout.workout_summary) if workout.workout_summary else None,  # Convert dict to string (JSON)
+                workout.created_at.strftime('%Y-%m-%dT%H:%M:%S.000+00:00'),
+                workout.updated_at.strftime('%Y-%m-%dT%H:%M:%S.000+00:00')
+        )
+        )
+        
+
+    def add_feedback(self, msg:str, rpe:int, workout_id:int):
+        ...
+
+    def get_feedback_from_workouts(self, workouts_id)->dict[int, dict]:
+        # Return {workout_id -> {rpe, msg}}
+        ...
+
+    def add_plan(self, plan_data):
+        ...
 
     

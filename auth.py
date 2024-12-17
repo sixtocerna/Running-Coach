@@ -11,6 +11,7 @@ client_secret = os.getenv('CLIENT_SECRET')
 redirect_uri = os.getenv('REDIRECT_URI')
 
 class TokenManager:
+
     def __init__(self, db_file, client_id, client_secret):
         self.db_file = db_file
         self.client_id = client_id
@@ -105,10 +106,9 @@ class TokenManager:
         self._store_tokens_in_db(access_token, access_token_expires_at, refresh_token)
 
 
-# Usage example:
-# Initialize with your credentials and tokens
+
 token_manager = TokenManager(
-    db_file="db.sqlite3",  # SQLite database file
+    db_file="db.sqlite3",  
     client_id=client_id,
     client_secret=client_secret
 )
