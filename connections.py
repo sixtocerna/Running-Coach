@@ -133,7 +133,6 @@ class DatabaseAPI:
         );
         ''')
 
-
     def _create_plan_table(self, cursor:sqlite3.Cursor):
 
         cursor.execute('''
@@ -196,7 +195,6 @@ class DatabaseAPI:
         conn.commit()
         conn.close()
 
-
     def upload_workout(self, workout:WorkoutData, cursor:sqlite3.Cursor):
         
         insert_query = """
@@ -222,7 +220,40 @@ class DatabaseAPI:
         )
         )
         
+    def recent_workouts_data(self, num:int=5) -> list[WorkoutData]:
 
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+
+        query = f'SELECT * FROM workouts ORDER BY starts DESC LIMIT {num}'
+
+        result = cursor.execute(query).fetchall()
+
+        conn.close()
+
+        workouts = [
+            WorkoutData(**{
+                    'id': r[0],
+                    'starts': r[1],
+                    'minutes': r[2],
+                    'name': r[3],
+                    'plan_id': r[4],
+                    'route_id': r[5],
+                    'workout_token': r[6],
+                    'workout_type_id': r[7],
+                    'day_code': r[8],
+                    'workout_summary': json.loads(r[9]),
+                    'created_at': r[10],
+                    'updated_at': r[11]}
+                    ) 
+            for r in result
+            ]
+        
+
+        return workouts
+
+
+        
     def add_feedback(self, msg:str, rpe:int, workout_id:int):
         ...
 

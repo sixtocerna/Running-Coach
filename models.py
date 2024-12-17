@@ -22,24 +22,30 @@ class WorkoutData(BaseModel):
     def parse_and_convert_to_UTC_starts(cls, value):
 
         if isinstance(value, str):
-            value_with_hour_shift = value.replace("Z", "+00:00")
-            return datetime.fromisoformat(value_with_hour_shift)
+            if 'Z' in value:
+                value_with_hour_shift = value.replace("Z", "+00:00")
+                return datetime.fromisoformat(value_with_hour_shift)
+            return datetime.fromisoformat(value)
         
     @field_validator('created_at', mode='before')
     @classmethod
     def parse_and_convert_to_UTC_created_at(cls, value):
 
         if isinstance(value, str):
-            value_with_hour_shift = value.replace("Z", "+00:00")
-            return datetime.fromisoformat(value_with_hour_shift)
+            if 'Z' in value:
+                value_with_hour_shift = value.replace("Z", "+00:00")
+                return datetime.fromisoformat(value_with_hour_shift)
+            return datetime.fromisoformat(value)
         
     @field_validator('updated_at', mode='before')
     @classmethod
     def parse_and_convert_to_UTC_updated_at(cls, value):
 
         if isinstance(value, str):
-            value_with_hour_shift = value.replace("Z", "+00:00")
-            return datetime.fromisoformat(value_with_hour_shift)
+            if 'Z' in value:
+                value_with_hour_shift = value.replace("Z", "+00:00")
+                return datetime.fromisoformat(value_with_hour_shift)
+            return datetime.fromisoformat(value)
 
 class WorkoutEndpointResponseJSONModel(BaseModel):
     workouts : list[WorkoutData]
