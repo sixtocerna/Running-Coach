@@ -1,4 +1,4 @@
-from pydantic_ai import Agent, RunContext, ModelRetry
+from pydantic_ai import Agent, ModelRetry
 import logfire
 from typing import List, Optional
 from models import IntensityType, Target, Interval, WorkoutComponent
@@ -142,7 +142,7 @@ ExtractIntervalsAgent = Agent(
     result_type=list[Interval]
 )
 
-@ExtractIntervalsAgent.tool_plain(retries=15)
+@ExtractIntervalsAgent.tool_plain(retries=5)
 def to_inverval_obj(name:Optional[str], exit_trigger_type:str, exit_trigger_value:int, targets:Optional[List[Target]]|None, intervals:List[Interval]|None, intensity_type:IntensityType=None)->Interval:
     """"
     Returns an Interval object
@@ -212,13 +212,13 @@ WorkoutGenerationAgent = Agent(
             ## x.1 Name 
             - Description : ..., 
             - Parameters : Time: ..., Pace: ...
-        Consider the warmup as the first interval. DO NOT TALK ABOUT EFFORT. PROVIDE THE PACE IN MIN/KM. ALWAYS PROVIDE AN INTERVAL OF PACES
+        Consider the warmup as the first interval. DO NOT TALK ABOUT EFFORT. PROVIDE THE PACE IN MIN/KM. ALWAYS PROVIDE AN INTERVAL OF PACES.
+        Finally please use the tools to retrive information about the last workouts
         """,
 
 )
 
-USER_INPUT = '' #Contains addition information to generate the training
-
-@WorkoutGenerationAgent.system_prompt
-def get_username(ctx: RunContext[str]):
-    return f"The user's name is {ctx.deps}"
+SummarizerAgent = Agent(
+    'openai:gpt-4o-mini',
+    system_prompt='Please summarize in less than 50 words the following traning : description and how it will help me achieve my goals'
+)

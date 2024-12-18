@@ -46,7 +46,6 @@ def read_goals_progress_deadline(params_file:str) -> Tuple[RunningParams, Runnin
 
     return goal, current_progress, deadline
 
-
 def generate_goal_context():
 
     goal, current_progress, deadline = read_goals_progress_deadline('params.json')
@@ -62,7 +61,9 @@ def generate_goal_context():
 
     return output
 
-def get_week_context(week_number:int, week_objectives:dict[int, dict]) -> str:
+def generate_week_context(week_number:int) -> str:
+
+    week_objectives = read_plan_stucture('plan_structure.json')
 
     for stage_num, week_data in week_objectives.items():
 
@@ -84,12 +85,6 @@ def read_plan_stucture(filename:str) -> dict:
         data = json.loads(data)
 
     return data
-
-def generate_workouts_report(workout_id:int) -> str:
-
-    db = DatabaseAPI('db.sqlite3', logger=logger)
-
-    db.get_recent_workouts_data()
 
 def generate_indiviual_workout_report(workout_data:WorkoutData, feedback_data:dict,detailed:bool=False, add_days_since:bool=False) -> str:
 
@@ -132,10 +127,35 @@ def generate_indiviual_workout_report(workout_data:WorkoutData, feedback_data:di
 
         return output
     
-db = DatabaseAPI('db.sqlite3', logger=logger)
-most_recent_workout = db.get_recent_workouts_data(1)[0]
-id_ = most_recent_workout.id
+def generate_recent_workouts_summaries():
 
-feedback = db.get_feedback_from_workouts([id_])[0]
+    db = DatabaseAPI('db.sqlite3', logger=logger)
+    recent_workouts = db.get_recent_workouts_data(5)
+    ids = [w.id for w in recent_workouts]
 
-print(generate_indiviual_workout_report(most_recent_workout, feedback_data=feedback, detailed=True, add_days_since=True))
+    feedbacks = db.get_feedback_from_workouts(ids)
+
+    most_recent_workout = recent_workouts.pop(0)
+
+    most_recent_wk_summary = generate_indiviual_workout_report(
+        most_recent_workout, 
+        feedback_data=feedbacks[most_recent_workout.id], 
+        detailed=True, 
+        add_days_since=True
+    )
+
+    other_summaries = [generate_indiviual_workout_report(w, feedbacks[w.id], add_days_since=True) for w in recent_workouts[1:]]
+    other_summaries = '\n'.join(other_summaries)
+
+    return most_recent_wk_summary + '\nOlder workouts :\n' + other_summaries
+
+def generate_user_prompt():
+    additional_info = input('Any addtional information for today\'s workout: ')
+
+    output = additional_info
+    output += '\nHere are some of my previous workouts data:\n' + generate_recent_workouts_summaries()
+    output += '\n' + generate_goal_context()
+    output += '\n' + generate_week_context(1)
+
+    return output
+
