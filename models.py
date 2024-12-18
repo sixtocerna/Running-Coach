@@ -3,7 +3,7 @@ from pydantic import BaseModel, field_validator
 import requests
 from io import BytesIO
 import fitparse
-from utils import speed_to_pace
+from utils import speed_to_pace, get_default_header_data
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List

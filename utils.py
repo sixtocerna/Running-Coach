@@ -44,4 +44,15 @@ def speed_to_pace(speed_mps):
     return f"{minutes}:{seconds:02d}min/km"
 
 
+def get_default_header_data(name, description):
+    return {
+        'name':name,
+        'version': '1.0.0',
+        'description' : description,
+        'duration_s':None,
+        'distance_m':None,
+        'workout_type_family':1,
+        'workout_type_location':1,
+        'threshold_speed':None
+    }
 
