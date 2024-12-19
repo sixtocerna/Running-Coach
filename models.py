@@ -10,6 +10,7 @@ from typing import Optional, List
 from enum import Enum
 import base64
 import json
+from typing import Any
 
 load_dotenv()
 
@@ -161,6 +162,22 @@ class Target(BaseModel):
     low: float = Field(..., description="The lowest value for the target to be considered 'in range'")
     high: float = Field(..., description="The highest value for the target to be considered 'in range'")
 
+    @model_validator(mode='before')
+    @classmethod
+    def check_high_greater_than_low(self, data:Any):
+        high = data['high']
+        low = data['low']
+
+        # Switch values if values inverted
+        if low>high:
+            data['high'] = low
+            data['low'] = high
+            return data
+        elif low==high:
+            raise ValueError(f'Low and high values have to be different')
+        else:
+            return data
+
 class TriggerType(str, Enum):
     time = "time"  # Measured in seconds
     distance = "distance"  # Measured in meters
@@ -199,19 +216,23 @@ class Interval(BaseModel):
         
         return self
     
+    
 class Plan(BaseModel):
     
     header : Header 
     intervals : List[Interval]
 
-    def to_payload(self) -> str:
+    def to_payload(self, encoded=True) -> str:
 
         json_content = {
-            'header':self.header.model_dump(),
-            'intervals':[i.model_dump() for i in self.intervals]
+            'header':self.header.model_dump(exclude_none=True),
+            'intervals':[i.model_dump(exclude_none=True) for i in self.intervals]
         }
-        json_string = json.dumps(json_content).encode('utf-8')
-        base64_bytes = base64.b64encode(json_string)
 
-        return base64_bytes.decode('utf-8')
+        if encoded:
+            json_string = json.dumps(json_content).encode('utf-8')
+            base64_bytes = base64.b64encode(json_string)
+            return base64_bytes.decode('utf-8')
+        else:
+            return json_content
 
