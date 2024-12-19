@@ -101,7 +101,7 @@ def generate_indiviual_workout_report(workout_data:WorkoutData, feedback_data:di
     if detailed:
         # Called request and process the file
         laps = workout_data.laps
-        output = '\n'
+        output += '\n'
 
         for num, lap in enumerate(laps):
             lap_as_str = f'Lap #{num+1}'.center(30, '-') +'\n ' + '\n '.join([f'- {name} : {value}' for name,value in lap.items()])
