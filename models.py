@@ -177,7 +177,7 @@ class Target(BaseModel):
             raise ValueError(f'Low and high values have to be different')
         else:
             return data
-
+    
 class TriggerType(str, Enum):
     time = "time"  # Measured in seconds
     distance = "distance"  # Measured in meters
@@ -201,6 +201,21 @@ class Interval(BaseModel):
     intensity_type: Optional[IntensityType] = Field(default=None, description="Intensity type label for the interval (e.g., warmup, tempo, cooldown)")
     targets: Optional[List[Target]] = Field(default=None, description="List of target values and controls for the interval, valid only if exit_trigger_type is not 'repeat'")
     intervals: Optional[List['Interval']] = Field(default=None, description="Nested intervals used for repetitions when exit_trigger_type is 'repeat'")
+
+    def model_dump(self, *args, **kwargs):
+        # Convert all Enums to their values recursively
+        original_dict = super().model_dump(*args, **kwargs)
+        return self._convert_enums(original_dict)
+
+    @staticmethod
+    def _convert_enums(obj):
+        if isinstance(obj, Enum):
+            return obj.name
+        elif isinstance(obj, list):
+            return [Interval._convert_enums(item) for item in obj]
+        elif isinstance(obj, dict):
+            return {key: Interval._convert_enums(value) for key, value in obj.items()}
+        return obj
 
     @model_validator(mode='after')
     def validate_targets_and_intervals(self):
